@@ -1,547 +1,254 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic Lifestyle Habit Tracker</title>
-    
-    <!-- React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- Babel for JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <title>PhD Habit Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
-        /* Custom Scrollbar for horizontal scrolling tables */
-        .custom-scrollbar::-webkit-scrollbar { height: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
-        
-        /* Smooth fade */
-        .fade-in { animation: fadeIn 0.3s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    </style>
+  <!-- React -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body { font-family: Inter, sans-serif; }
+  </style>
 </head>
-<body>
-    <div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+<body class="bg-gray-100 dark:bg-slate-900 text-gray-900 dark:text-gray-100">
+<div id="root"></div>
 
-        // --- Constants ---
-        const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        const INITIAL_LIBRARY = ["Drink 2L Water", "Read 10 Pages", "Exercise 30m", "Meditate", "No Sugar", "Sleep 8hrs", "Journaling", "Code Practice"];
-        
-        // --- Components ---
+<script type="text/babel">
 
-        // 1. Icon Component Wrapper
-        const Icon = ({ name, size = 18, className = "" }) => {
-            useEffect(() => {
-                lucide.createIcons();
-            }, [name]);
-            return <i data-lucide={name} width={size} height={size} className={className}></i>;
-        };
+/* -------------------- Utilities -------------------- */
 
-        // 2. Main Application
-        const App = () => {
-            // State
-            const [view, setView] = useState('dashboard'); // 'dashboard', 'library', or specific month name
-            const [library, setLibrary] = useState(INITIAL_LIBRARY);
-            // Data Structure: { "Jan": [ { id: 123, name: "Run", days: [false, true...] } ] }
-            const [trackerData, setTrackerData] = useState(() => {
-                const initialData = {};
-                MONTHS.forEach(m => initialData[m] = []);
-                return initialData;
-            });
-            const [toast, setToast] = useState(null);
+const todayISO = () => new Date().toISOString().slice(0,10);
 
-            // Load from LocalStorage on mount
-            useEffect(() => {
-                const savedData = localStorage.getItem('habitTrackerData');
-                const savedLibrary = localStorage.getItem('habitLibrary');
-                if (savedData) setTrackerData(JSON.parse(savedData));
-                if (savedLibrary) setLibrary(JSON.parse(savedLibrary));
-            }, []);
+const getWeekKey = (dateStr) => {
+  const d = new Date(dateStr);
+  const firstJan = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil((((d - firstJan) / 86400000) + firstJan.getDay()+1)/7);
+  return `${d.getFullYear()}-W${week}`;
+};
 
-            // Save to LocalStorage on change
-            useEffect(() => {
-                localStorage.setItem('habitTrackerData', JSON.stringify(trackerData));
-                localStorage.setItem('habitLibrary', JSON.stringify(library));
-            }, [trackerData, library]);
+/* -------------------- App -------------------- */
 
-            // Helper: Show Toast
-            const showToast = (msg) => {
-                setToast(msg);
-                setTimeout(() => setToast(null), 3000);
-            };
+const App = () => {
+  const [data, setData] = React.useState(() => {
+    const saved = localStorage.getItem("phd-habit-data");
+    return saved ? JSON.parse(saved) : {
+      meta: { created: todayISO(), version: 1 },
+      habits: {},
+      logs: {}
+    };
+  });
 
-            // --- Handlers ---
-            
-            const handleAddHabitToLibrary = (newHabit) => {
-                if (library.includes(newHabit)) {
-                    showToast("Habit already exists in library!");
-                    return;
-                }
-                setLibrary([...library, newHabit]);
-                showToast("Habit added to Library");
-            };
+  const [view, setView] = React.useState("daily");
+  const [selectedDate, setSelectedDate] = React.useState(todayISO());
 
-            const handleDeleteFromLibrary = (habitToRemove) => {
-                setLibrary(library.filter(h => h !== habitToRemove));
-                showToast("Habit removed from Library");
-            };
+  React.useEffect(() => {
+    localStorage.setItem("phd-habit-data", JSON.stringify(data));
+  }, [data]);
 
-            const handleAddHabitToMonth = (month, habitName) => {
-                const newEntry = {
-                    id: Date.now(),
-                    name: habitName,
-                    days: Array(31).fill(false)
-                };
-                const updatedMonth = [...trackerData[month], newEntry];
-                setTrackerData({ ...trackerData, [month]: updatedMonth });
-                showToast(`Added ${habitName} to ${month}`);
-            };
+  /* -------------------- Habit Logic -------------------- */
 
-            const handleRemoveHabitFromMonth = (month, entryId) => {
-                const updatedMonth = trackerData[month].filter(h => h.id !== entryId);
-                setTrackerData({ ...trackerData, [month]: updatedMonth });
-            };
+  const activeHabits = Object.values(data.habits)
+    .filter(h =>
+      !h.archived &&
+      h.activeFrom <= selectedDate &&
+      (!h.activeTo || h.activeTo >= selectedDate)
+    );
 
-            const toggleDay = (month, entryId, dayIndex) => {
-                const updatedMonth = trackerData[month].map(entry => {
-                    if (entry.id === entryId) {
-                        const newDays = [...entry.days];
-                        newDays[dayIndex] = !newDays[dayIndex];
-                        return { ...entry, days: newDays };
-                    }
-                    return entry;
-                });
-                setTrackerData({ ...trackerData, [month]: updatedMonth });
-            };
+  const logValue = (habitId, value, note="") => {
+    setData(prev => {
+      const logs = {...prev.logs};
+      if (!logs[selectedDate]) logs[selectedDate] = {};
+      logs[selectedDate][habitId] = { value, note };
+      return { ...prev, logs };
+    });
+  };
 
-            const exportData = () => {
-                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ library, trackerData }));
-                const downloadAnchorNode = document.createElement('a');
-                downloadAnchorNode.setAttribute("href", dataStr);
-                downloadAnchorNode.setAttribute("download", "habit_tracker_backup.json");
-                document.body.appendChild(downloadAnchorNode);
-                downloadAnchorNode.click();
-                downloadAnchorNode.remove();
-            };
+  /* -------------------- Views -------------------- */
 
-            const importData = (event) => {
-                const file = event.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const parsed = JSON.parse(e.target.result);
-                        if (parsed.library && parsed.trackerData) {
-                            setLibrary(parsed.library);
-                            setTrackerData(parsed.trackerData);
-                            showToast("Data imported successfully!");
-                        } else {
-                            alert("Invalid file format");
-                        }
-                    } catch (err) {
-                        alert("Error reading file");
-                    }
-                };
-                reader.readAsText(file);
-            };
+  return (
+    <div className="max-w-5xl mx-auto p-4 space-y-6">
+      <Header view={view} setView={setView} />
 
-            // --- Render ---
+      {view === "daily" && (
+        <DailyView
+          date={selectedDate}
+          setDate={setSelectedDate}
+          habits={activeHabits}
+          logs={data.logs[selectedDate] || {}}
+          onLog={logValue}
+        />
+      )}
 
-            return (
-                <div className="min-h-screen flex flex-col md:flex-row max-w-7xl mx-auto shadow-2xl bg-white overflow-hidden">
-                    
-                    {/* Sidebar Navigation */}
-                    <div className="w-full md:w-64 bg-slate-900 text-white flex flex-col shrink-0">
-                        <div className="p-6 border-b border-slate-700">
-                            <h1 className="text-xl font-bold flex items-center gap-2">
-                                <Icon name="activity" size={24} className="text-emerald-400" />
-                                Habit Tracker
-                            </h1>
-                        </div>
-                        
-                        <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-                            <button 
-                                onClick={() => setView('dashboard')}
-                                className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${view === 'dashboard' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800 text-slate-300'}`}
-                            >
-                                <Icon name="layout-dashboard" size={18} />
-                                Yearly Dashboard
-                            </button>
-                            <button 
-                                onClick={() => setView('library')}
-                                className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${view === 'library' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-800 text-slate-300'}`}
-                            >
-                                <Icon name="library" size={18} />
-                                Habit Library
-                            </button>
-                            
-                            <div className="pt-4 pb-2 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                Monthly Sheets
-                            </div>
-                            {MONTHS.map(m => (
-                                <button
-                                    key={m}
-                                    onClick={() => setView(m)}
-                                    className={`w-full text-left px-4 py-2 rounded-md text-sm flex items-center justify-between transition-colors ${view === m ? 'bg-slate-800 text-white border-l-4 border-emerald-500' : 'hover:bg-slate-800 text-slate-400'}`}
-                                >
-                                    {m}
-                                    {trackerData[m].length > 0 && (
-                                        <span className="bg-slate-700 text-xs px-2 py-0.5 rounded-full text-slate-300">
-                                            {trackerData[m].length}
-                                        </span>
-                                    )}
-                                </button>
-                            ))}
-                        </nav>
+      {view === "habits" && (
+        <HabitManager data={data} setData={setData} />
+      )}
 
-                        <div className="p-4 border-t border-slate-700 space-y-2">
-                            <button onClick={exportData} className="w-full text-xs flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded">
-                                <Icon name="download" size={14} /> Backup Data
-                            </button>
-                            <label className="w-full text-xs flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded cursor-pointer">
-                                <Icon name="upload" size={14} /> Restore Data
-                                <input type="file" onChange={importData} className="hidden" accept=".json" />
-                            </label>
-                        </div>
-                    </div>
+      {view === "review" && (
+        <ReviewView data={data} />
+      )}
 
-                    {/* Main Content Area */}
-                    <main className="flex-1 bg-gray-50 h-screen overflow-hidden flex flex-col relative">
-                        {toast && (
-                            <div className="absolute top-4 right-4 bg-slate-800 text-white px-4 py-2 rounded shadow-lg z-50 fade-in flex items-center gap-2">
-                                <Icon name="check-circle" size={16} className="text-emerald-400" />
-                                {toast}
-                            </div>
-                        )}
+      <ExportPanel data={data} />
+    </div>
+  );
+};
 
-                        <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
-                            {view === 'dashboard' && <DashboardView trackerData={trackerData} months={MONTHS} />}
-                            {view === 'library' && <LibraryView library={library} onAdd={handleAddHabitToLibrary} onDelete={handleDeleteFromLibrary} />}
-                            {MONTHS.includes(view) && (
-                                <MonthView 
-                                    month={view} 
-                                    data={trackerData[view]} 
-                                    library={library}
-                                    onAddHabit={handleAddHabitToMonth}
-                                    onRemoveHabit={handleRemoveHabitFromMonth}
-                                    onToggleDay={toggleDay}
-                                />
-                            )}
-                        </div>
-                    </main>
-                </div>
-            );
-        };
+/* -------------------- Components -------------------- */
 
-        // --- Sub-Components ---
+const Header = ({view, setView}) => (
+  <div className="flex gap-2">
+    {["daily","habits","review"].map(v => (
+      <button key={v}
+        onClick={() => setView(v)}
+        className={`px-4 py-2 rounded ${view===v ? "bg-emerald-600 text-white" : "bg-gray-200 dark:bg-slate-700"}`}>
+        {v.toUpperCase()}
+      </button>
+    ))}
+  </div>
+);
 
-        const LibraryView = ({ library, onAdd, onDelete }) => {
-            const [input, setInput] = useState("");
+/* -------- Daily Review -------- */
 
-            const handleSubmit = (e) => {
-                e.preventDefault();
-                if (input.trim()) {
-                    onAdd(input.trim());
-                    setInput("");
-                }
-            };
+const DailyView = ({date, setDate, habits, logs, onLog}) => (
+  <div className="bg-white dark:bg-slate-800 p-4 rounded shadow">
+    <h2 className="text-xl font-bold mb-4">Daily Review</h2>
 
-            return (
-                <div className="max-w-2xl mx-auto fade-in">
-                    <h2 className="text-2xl font-bold mb-6 text-slate-800">Habit Library</h2>
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
-                        <p className="text-sm text-gray-500 mb-4">Add potential habits here. You can then select them in your monthly tracking sheets.</p>
-                        <form onSubmit={handleSubmit} className="flex gap-2">
-                            <input 
-                                type="text" 
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                placeholder="E.g., Morning Jog, Read 30m..."
-                                className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                            />
-                            <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg font-medium transition-colors">
-                                Add
-                            </button>
-                        </form>
-                    </div>
+    <input type="date"
+      value={date}
+      onChange={e => setDate(e.target.value)}
+      className="mb-4 px-2 py-1 border rounded"/>
 
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="bg-gray-50 px-6 py-3 border-b border-gray-200 font-medium text-gray-500">
-                            Available Habits ({library.length})
-                        </div>
-                        <ul className="divide-y divide-gray-100">
-                            {library.map((habit, idx) => (
-                                <li key={idx} className="px-6 py-3 flex justify-between items-center hover:bg-gray-50 group">
-                                    <span className="text-gray-700">{habit}</span>
-                                    <button 
-                                        onClick={() => onDelete(habit)}
-                                        className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                                        title="Delete from Library"
-                                    >
-                                        <Icon name="trash-2" size={18} />
-                                    </button>
-                                </li>
-                            ))}
-                            {library.length === 0 && (
-                                <li className="px-6 py-8 text-center text-gray-400">Your library is empty. Add a habit above!</li>
-                            )}
-                        </ul>
-                    </div>
-                </div>
-            );
-        };
+    {habits.length === 0 && <p className="text-gray-500">No active habits</p>}
 
-        const MonthView = ({ month, data, library, onAddHabit, onRemoveHabit, onToggleDay }) => {
-            const [selectedHabit, setSelectedHabit] = useState("");
+    <div className="space-y-3">
+      {habits.map(h => (
+        <div key={h.id} className="flex items-center gap-3">
+          <div className="flex-1">
+            <div className="font-medium">{h.name}</div>
+            <div className="text-xs text-gray-500">
+              Min: {h.minThreshold} {h.unit}
+            </div>
+          </div>
 
-            const handleAdd = () => {
-                if (selectedHabit) {
-                    onAddHabit(month, selectedHabit);
-                    setSelectedHabit("");
-                }
-            };
+          <input type="number"
+            className="w-24 px-2 py-1 border rounded"
+            defaultValue={logs[h.id]?.value || ""}
+            onBlur={e => onLog(h.id, Number(e.target.value))}
+          />
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
-            // Calculate Monthly Score
-            const totalChecks = data.reduce((acc, curr) => acc + curr.days.filter(Boolean).length, 0);
+/* -------- Habit Manager -------- */
 
-            return (
-                <div className="fade-in flex flex-col h-full">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                        <div>
-                            <h2 className="text-2xl font-bold text-slate-800">{month} Overview</h2>
-                            <p className="text-sm text-gray-500">Track your consistency day by day.</p>
-                        </div>
-                        <div className="flex items-center gap-4 bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100">
-                            <div className="text-sm font-medium text-emerald-800">Total Month Score:</div>
-                            <div className="text-2xl font-bold text-emerald-600">{totalChecks} <span className="text-xs text-emerald-500 font-normal">checks</span></div>
-                        </div>
-                    </div>
+const HabitManager = ({data, setData}) => {
+  const [name,setName]=React.useState("");
+  const [unit,setUnit]=React.useState("minutes");
+  const [min,setMin]=React.useState(30);
 
-                    {/* Controls */}
-                    <div className="flex gap-2 mb-6 max-w-xl">
-                        <select 
-                            value={selectedHabit} 
-                            onChange={(e) => setSelectedHabit(e.target.value)}
-                            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white"
-                        >
-                            <option value="">-- Select a Habit from Library --</option>
-                            {library.map((h, i) => (
-                                <option key={i} value={h}>{h}</option>
-                            ))}
-                        </select>
-                        <button 
-                            onClick={handleAdd}
-                            disabled={!selectedHabit}
-                            className="bg-emerald-600 disabled:bg-gray-300 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors"
-                        >
-                            Add to Month
-                        </button>
-                    </div>
+  const addHabit = () => {
+    const id = "h"+Date.now();
+    setData(prev => ({
+      ...prev,
+      habits: {
+        ...prev.habits,
+        [id]: {
+          id, name, unit,
+          minThreshold: min,
+          period:"day",
+          activeFrom: todayISO(),
+          activeTo:null,
+          archived:false
+        }
+      }
+    }));
+    setName("");
+  };
 
-                    {/* Data Grid */}
-                    <div className="flex-1 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
-                        <div className="overflow-x-auto custom-scrollbar flex-1">
-                            <table className="w-full text-left border-collapse">
-                                <thead className="bg-slate-800 text-white sticky top-0 z-10">
-                                    <tr>
-                                        <th className="p-3 sticky left-0 z-20 bg-slate-800 min-w-[180px] shadow-[2px_0_5px_rgba(0,0,0,0.1)]">Habit Focus</th>
-                                        {Array.from({length: 31}, (_, i) => (
-                                            <th key={i} className="p-1 text-center min-w-[32px] text-xs font-normal border-l border-slate-700">{i + 1}</th>
-                                        ))}
-                                        <th className="p-3 text-center min-w-[80px]">Success</th>
-                                        <th className="p-3 text-center min-w-[50px]"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {data.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="34" className="p-10 text-center text-gray-400">
-                                                No habits tracked this month yet. Select one above!
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        data.map((entry, idx) => {
-                                            const checks = entry.days.filter(Boolean).length;
-                                            const pct = Math.round((checks / 31) * 100);
-                                            
-                                            return (
-                                                <tr key={entry.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 transition-colors`}>
-                                                    <td className="p-3 font-medium text-gray-700 sticky left-0 bg-inherit shadow-[2px_0_5px_rgba(0,0,0,0.05)] border-r border-gray-200 truncate max-w-[180px]" title={entry.name}>
-                                                        {entry.name}
-                                                    </td>
-                                                    {entry.days.map((checked, dayIdx) => (
-                                                        <td key={dayIdx} className="p-1 text-center border-r border-gray-100">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={checked} 
-                                                                onChange={() => onToggleDay(month, entry.id, dayIdx)}
-                                                                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-500"
-                                                            />
-                                                        </td>
-                                                    ))}
-                                                    <td className="p-2 text-center">
-                                                        <span className={`px-2 py-1 rounded text-xs font-bold ${pct > 75 ? 'bg-green-100 text-green-700' : pct > 40 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-200 text-gray-600'}`}>
-                                                            {pct}%
-                                                        </span>
-                                                    </td>
-                                                    <td className="p-2 text-center">
-                                                        <button onClick={() => onRemoveHabit(month, entry.id)} className="text-gray-400 hover:text-red-500">
-                                                            <Icon name="x" size={16} />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
+  return (
+    <div className="bg-white dark:bg-slate-800 p-4 rounded shadow space-y-4">
+      <h2 className="text-xl font-bold">Habit Manager</h2>
 
-        const DashboardView = ({ trackerData, months }) => {
-            const [selectedMonth, setSelectedMonth] = useState("Jan");
+      <div className="flex gap-2">
+        <input placeholder="Habit name" value={name}
+          onChange={e=>setName(e.target.value)}
+          className="px-2 py-1 border rounded flex-1"/>
 
-            // 1. Calculate Selected Month Stats
-            const monthEntries = trackerData[selectedMonth] || [];
-            const monthTotalChecks = monthEntries.reduce((acc, curr) => acc + curr.days.filter(Boolean).length, 0);
+        <input type="number" value={min}
+          onChange={e=>setMin(Number(e.target.value))}
+          className="w-20 px-2 py-1 border rounded"/>
 
-            // 2. Calculate Global Progress (Aggregated by Habit Name)
-            const globalStats = useMemo(() => {
-                const stats = {}; // { "Run": 15, "Read": 40 }
-                
-                months.forEach(m => {
-                    (trackerData[m] || []).forEach(entry => {
-                        const checks = entry.days.filter(Boolean).length;
-                        if (stats[entry.name]) {
-                            stats[entry.name] += checks;
-                        } else {
-                            stats[entry.name] = checks;
-                        }
-                    });
-                });
+        <button onClick={addHabit}
+          className="bg-emerald-600 text-white px-4 rounded">
+          Add
+        </button>
+      </div>
 
-                // Convert to array and sort by consistency
-                return Object.entries(stats)
-                    .map(([name, total]) => ({ name, total, consistency: Math.round((total / 365) * 100) }))
-                    .sort((a, b) => b.total - a.total);
-            }, [trackerData]);
+      <ul className="text-sm">
+        {Object.values(data.habits).map(h=>(
+          <li key={h.id} className="flex justify-between">
+            {h.name}
+            {h.archived ? "(archived)" : ""}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
 
-            return (
-                <div className="fade-in space-y-8">
-                    <h2 className="text-3xl font-bold text-slate-800">Yearly Dashboard</h2>
+/* -------- Review -------- */
 
-                    {/* Top Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Monthly Picker Card */}
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                                <Icon name="calendar" size={20} className="text-blue-500" />
-                                Monthly Snapshot
-                            </h3>
-                            <div className="flex items-center gap-4 mb-4">
-                                <label className="text-sm text-gray-500">Select Month:</label>
-                                <select 
-                                    value={selectedMonth} 
-                                    onChange={(e) => setSelectedMonth(e.target.value)}
-                                    className="border border-gray-300 rounded px-2 py-1 bg-yellow-50 font-medium text-gray-700"
-                                >
-                                    {months.map(m => <option key={m} value={m}>{m}</option>)}
-                                </select>
-                            </div>
-                            <div className="text-center p-4 bg-slate-50 rounded-lg">
-                                <div className="text-sm text-gray-500 uppercase tracking-wide">Total Checks in {selectedMonth}</div>
-                                <div className="text-4xl font-bold text-slate-800 mt-1">{monthTotalChecks}</div>
-                            </div>
-                        </div>
+const ReviewView = ({data}) => {
+  const weeks = {};
 
-                        {/* Best Habit Card */}
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                                <Icon name="trophy" size={20} className="text-yellow-500" />
-                                Top Performing Habit
-                            </h3>
-                            {globalStats.length > 0 ? (
-                                <div className="text-center p-4 bg-yellow-50 rounded-lg border border-yellow-100">
-                                    <div className="text-xl font-bold text-gray-800">{globalStats[0].name}</div>
-                                    <div className="text-sm text-gray-600 mt-1">{globalStats[0].total} total checks this year</div>
-                                </div>
-                            ) : (
-                                <div className="text-center text-gray-400 py-4">No data yet</div>
-                            )}
-                        </div>
-                    </div>
+  Object.entries(data.logs).forEach(([date,entries])=>{
+    const wk = getWeekKey(date);
+    if(!weeks[wk]) weeks[wk]={};
+    Object.entries(entries).forEach(([hid,val])=>{
+      weeks[wk][hid]=(weeks[wk][hid]||0)+val.value;
+    });
+  });
 
-                    {/* Global Table */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="p-6 border-b border-gray-200 bg-slate-50">
-                            <h3 className="text-lg font-bold text-slate-800">Global Yearly Progress</h3>
-                            <p className="text-sm text-gray-500">Total completion count across all months.</p>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead className="bg-gray-100 text-gray-600 text-sm uppercase">
-                                    <tr>
-                                        <th className="p-4">Habit Name</th>
-                                        <th className="p-4 text-center">Total Checks (Year)</th>
-                                        <th className="p-4 text-center">Yearly Consistency</th>
-                                        <th className="p-4">Visualization</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {globalStats.length > 0 ? (
-                                        globalStats.map((stat, i) => (
-                                            <tr key={i} className="hover:bg-gray-50">
-                                                <td className="p-4 font-medium text-gray-700">{stat.name}</td>
-                                                <td className="p-4 text-center font-bold text-slate-700">{stat.total}</td>
-                                                <td className="p-4 text-center text-gray-600">{stat.consistency}%</td>
-                                                <td className="p-4 w-1/3">
-                                                    <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-                                                        <div 
-                                                            className="h-full bg-emerald-500 rounded-full" 
-                                                            style={{ width: `${Math.min(stat.consistency, 100)}%` }}
-                                                        ></div>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    ) : (
-                                        <tr>
-                                            <td colSpan="4" className="p-8 text-center text-gray-400">
-                                                Start tracking habits in the monthly tabs to see data here.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
+  return (
+    <div className="bg-white dark:bg-slate-800 p-4 rounded shadow">
+      <h2 className="text-xl font-bold mb-4">Weekly Patterns</h2>
+      <pre className="text-xs">{JSON.stringify(weeks,null,2)}</pre>
+    </div>
+  );
+};
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+/* -------- Export -------- */
+
+const ExportPanel = ({data}) => (
+  <button
+    onClick={()=>{
+      const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download="phd-habit-data.json";
+      a.click();
+    }}
+    className="bg-gray-300 dark:bg-slate-700 px-4 py-2 rounded">
+    Export Data
+  </button>
+);
+
+/* -------------------- Render -------------------- */
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+</script>
 </body>
 </html>
-
